@@ -5,6 +5,8 @@ import withV4 from '../support/withV4';
 import BucketUtility from '../../lib/utility/bucket-util';
 
 const bucket = 'bucket-for-range-test';
+
+let eTag;
 let range;
 let fileSize;
 let s3;
@@ -14,12 +16,8 @@ const throwErr = (str, err) => {
     throw err;
 };
 
-const getRangePts = cb => {
+const getRangePts = range => {
     const endPts = range.split('-');
-
-    if (endPts.length !== 2) {
-        cb(new Error('Invalid range given'));
-    }
 
     if (endPts[0] === '') {
         endPts[0] = '0';
@@ -36,8 +34,8 @@ const byteTotal = rangePts => {
     return ((endPt - startPt) + 1).toString();
 };
 
-const checkRanges = (key, cb) => {
-    const rangePts = getRangePts(cb);
+const checkRanges = (key, range, cb) => {
+    const rangePts = getRangePts(range);
 
     s3.getObjectAsync({
         Bucket: bucket,
@@ -45,34 +43,44 @@ const checkRanges = (key, cb) => {
         Range: `bytes=${range}`,
     })
     .then(res => {
-        const contentRange = `bytes ${rangePts[0]}-${rangePts[1]}/${fileSize}`;
-
         fs.readFile(`./${key}.${range}`, (err, data) => {
             if (err) {
                 throw err;
             }
-            assert.deepStrictEqual(res.AcceptRanges, 'bytes');
-            assert.deepStrictEqual(res.Body, data);
-            assert.deepStrictEqual(res.ContentLength, byteTotal(rangePts));
-            assert.deepStrictEqual(res.ContentRange, contentRange);
+
+            assert.notDeepStrictEqual(new Date(res.LastModified).toString(),
+                'Invalid Date');
+            const obj = Object.assign({}, res);
+            delete obj.LastModified;
+
+            assert.deepStrictEqual(obj, {
+                AcceptRanges: 'bytes',
+                ContentLength: byteTotal(rangePts),
+                ETag: eTag,
+                ContentRange: `bytes ${rangePts[0]}-${rangePts[1]}/${fileSize}`,
+                ContentType: 'application/octet-stream',
+                Metadata: {},
+                Body: data,
+            });
+
             cb();
         });
     })
     .catch(cb);
 };
 
-const putFile = (file, key, cb) => {
+const putFile = (file, key, range, cb) => {
     s3.putObjectAsync({
         Bucket: bucket,
         Key: key,
         Body: fs.createReadStream(file),
     })
-    .then(() => checkRanges(key, cb))
+    .then(() => checkRanges(key, range, cb))
     .catch(cb);
 };
 
-const createRangeFile = (fn, cb) => {
-    const rangePts = getRangePts(cb);
+const testfileRange = (range, fn, cb) => {
+    const rangePts = getRangePts(range);
 
     exec(`dd if=./${fn} of=./${fn}.${range} bs=1 skip=${rangePts[0]} ` +
         `count=${byteTotal(rangePts)}`,
@@ -80,7 +88,7 @@ const createRangeFile = (fn, cb) => {
             if (err) {
                 return cb(err);
             }
-            return putFile(`./${fn}`, `${fn}`, cb);
+            return putFile(`./${fn}`, `${fn}`, range, cb);
         });
 };
 
@@ -90,11 +98,11 @@ const createHashedFile = cb => {
                 if (err) {
                     return cb(err);
                 }
-                return createRangeFile(`./hash.${fileSize}`, cb);
+                return cb();
             });
 };
 
-const createExec = cb => {
+const rangeTest = cb => {
     execFile('gcc', ['-o', './getRange', 'lib/utility/getRange.c'],
         err => {
             if (err) {
@@ -104,20 +112,22 @@ const createExec = cb => {
         });
 };
 
-describe.only('aws-node-sdk range test', () => {
+describe.only('aws-node-sdk range test for large end position', () => {
     withV4(sigCfg => {
         let bucketUtil;
+        fileSize = 2890;
+        eTag = '"dacc3aa9881a9b138039218029e5c2b3"';
 
-        before(done => {
+        beforeEach(done => {
             bucketUtil = new BucketUtility('default', sigCfg);
             s3 = bucketUtil.s3;
 
             s3.createBucketAsync({ Bucket: bucket })
-            .then(() => done())
-            .catch(err => throwErr('Error in before', err));
+            .then(() => rangeTest(done))
+            .catch(err => throwErr('Error in beforeEach', err));
         });
 
-        after(done =>
+        afterEach(done =>
             bucketUtil.empty(bucket)
             .then(() => bucketUtil.deleteOne(bucket))
             .then(() => {
@@ -129,30 +139,21 @@ describe.only('aws-node-sdk range test', () => {
                         done();
                     });
             })
-            .catch(err => throwErr('Error in after', err))
+            .catch(err => throwErr('Error in afterEach', err))
         );
-
-        it('put a 10MB hashedFile in a bucket, compare byte ranges', done => {
-            fileSize = 10 * 1024 * 1024;
-            range = '0-9';
-            createExec(done);
-        });
 
         it('should get the final 90 bytes of a 2890 byte object for a byte ' +
             'range of 2800-',
             done => {
-                fileSize = 2890;
-                range = '2800-';
-                createExec(done);
+                testfileRange('2800-', `./hash.${fileSize}`, done);
             }
         );
 
         it('should get the final 90 bytes of a 2890 byte object for a byte ' +
             'range of 2800-Number.MAX_SAFE_INTEGER',
             done => {
-                fileSize = 2890;
-                range = `2800-${Number.MAX_SAFE_INTEGER}`;
-                createExec(done);
+                testfileRange(`2800-${Number.MAX_SAFE_INTEGER}`,
+                    `./hash.${fileSize}`, done);
             }
         );
     });
