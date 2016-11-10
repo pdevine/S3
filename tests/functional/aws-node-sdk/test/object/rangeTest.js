@@ -22,9 +22,14 @@ const throwErr = (str, err) => {
 // the size of the file
 const getRangeEnds = range => {
     const arr = range.split('-');
-    arr[0] = arr[0] === '' ? '0' : arr[0];
-    arr[1] = arr[1] === '' || Number.parseInt(arr[1], 10) >= fileSize ?
-        arr[1] = (fileSize - 1).toString() : arr[1];
+    if (arr[0] === '' && arr[1] !== '') {
+        arr[0] = (Number.parseInt(fileSize, 10) - Number.parseInt(arr[1], 10));
+        arr[1] = (Number.parseInt(fileSize, 10) - 1).toString();
+    } else {
+        arr[0] = arr[0] === '' ? '0' : arr[0];
+        arr[1] = arr[1] === '' || Number.parseInt(arr[1], 10) >= fileSize ?
+            arr[1] = (Number.parseInt(fileSize, 10) - 1).toString() : arr[1];
+    }
     return { start: arr[0], end: arr[1] };
 };
 
@@ -45,8 +50,13 @@ const checkRanges = (range, cb) =>
             if (err) {
                 return cb(err);
             }
+
+            console.log(res);
+
             const { start, end } = getRangeEnds(range);
 
+            // If range header is invalid, AcceptRanges and ContentType should
+            // be invalid.
             assert.deepStrictEqual(res.AcceptRanges, 'bytes');
             assert.notDeepStrictEqual(new Date(res.LastModified).toString(),
                 'Invalid Date');
@@ -145,15 +155,91 @@ const createHashedFile = cb =>
             return execFile('./getRangeExec', ['--size', fileSize, fn], cb);
         });
 
-describe('aws-node-sdk range test for large end position', () => {
+// describe('aws-node-sdk range test for large end position', () => {
+//     withV4(sigCfg => {
+//         const bucketUtil = new BucketUtility('default', sigCfg);
+//         s3 = bucketUtil.s3;
+//
+//         beforeEach(done => {
+//             fileSize = 2890;
+//             fn = `hashedFile.${fileSize}`;
+//             eTag = '"dacc3aa9881a9b138039218029e5c2b3"';
+//
+//             s3.createBucketAsync({ Bucket: bucket })
+//             .then(() => createHashedFile(done))
+//             .catch(err => throwErr('Error in beforeEach', err));
+//         });
+//
+//         afterEach(done =>
+//             bucketUtil.empty(bucket)
+//             .then(() => bucketUtil.deleteOne(bucket))
+//             .then(() => exec('rm getRangeExec hashedFile.*', done))
+//             .catch(err => throwErr('Error in afterEach', err))
+//         );
+//
+//         it('should get the final 90 bytes of a 2890 byte object for a byte ' +
+//             'range of 2800-', done => rangeTest('2800-', done));
+//
+//         it('should get the final 90 bytes of a 2890 byte object for a byte ' +
+//             'range of 2800-Number.MAX_SAFE_INTEGER',
+//             done => rangeTest(`2800-${Number.MAX_SAFE_INTEGER}`, done));
+//     });
+// });
+//
+// describe('aws-node-sdk range test for multipartUpload', () => {
+//     withV4(sigCfg => {
+//         const bucketUtil = new BucketUtility('default', sigCfg);
+//         s3 = bucketUtil.s3;
+//
+//         beforeEach(done => {
+//             fileSize = 10 * 1024 * 1024;
+//             fn = `hashedFile.${fileSize}`;
+//             eTag = '"7eb736897d426098850e617502ea953e-2"';
+//
+//             s3.createBucketAsync({ Bucket: bucket })
+//             .then(() => s3.createMultipartUploadAsync({
+//                 Bucket: bucket,
+//                 Key: fn,
+//             }))
+//             .then(res => {
+//                 uploadId = res.UploadId;
+//             })
+//             .then(() => createHashedFile(done))
+//             .catch(err => throwErr('Error in beforeEach', err));
+//         });
+//
+//         afterEach(done => bucketUtil.empty(bucket)
+//             .then(() => bucketUtil.deleteOne(bucket))
+//             .then(() => exec('rm getRangeExec hashedFile.*', done))
+//         );
+//
+//         it('should get a range from the first part of an object put by ' +
+//             'multipart upload', done => rangeTest('0-9', done, true));
+//
+//         it('should get a range from the second part of an object put by ' +
+//             'multipart upload', done =>
+//             rangeTest('5242880-5242889', done, true));
+//
+//         it('should get a range that spans both parts of an object put by ' +
+//             'multipart upload', done =>
+//             rangeTest('5242875-5242884', done, true));
+//
+//         it('should get a range from the second part of an object put by ' +
+//             'multipart upload and include the end even if the range requested' +
+//             ' goes beyond the actual object end by multipart upload', done =>
+//             rangeTest('10485750-10485790', done, true));
+//     });
+// });
+
+describe.only('aws-node-sdk range test of regular object put (non-MPU)', () => {
     withV4(sigCfg => {
         const bucketUtil = new BucketUtility('default', sigCfg);
         s3 = bucketUtil.s3;
 
         beforeEach(done => {
-            fileSize = 2890;
+            fileSize = 200;
             fn = `hashedFile.${fileSize}`;
-            eTag = '"dacc3aa9881a9b138039218029e5c2b3"';
+            eTag = '"16c63c8bd6edf5c9ebe3557848e6c518"';
 
             s3.createBucketAsync({ Bucket: bucket })
             .then(() => createHashedFile(done))
@@ -167,56 +253,18 @@ describe('aws-node-sdk range test for large end position', () => {
             .catch(err => throwErr('Error in afterEach', err))
         );
 
-        it('should get the final 90 bytes of a 2890 byte object for a byte ' +
-            'range of 2800-', done => rangeTest('2800-', done));
+        it('should get a range for an object put without MPU', done =>
+            rangeTest('10-99', done));
 
-        it('should get the final 90 bytes of a 2890 byte object for a byte ' +
-            'range of 2800-Number.MAX_SAFE_INTEGER',
-            done => rangeTest(`2800-${Number.MAX_SAFE_INTEGER}`, done));
-    });
-});
+        it('should get a range for an object using only an end offset in the ' +
+            'request', done => rangeTest('-10', done));
 
-describe('aws-node-sdk range test for multipartUpload', () => {
-    withV4(sigCfg => {
-        const bucketUtil = new BucketUtility('default', sigCfg);
-        s3 = bucketUtil.s3;
+        it('should get a range for an object using only a start offset in the' +
+            'request', done => rangeTest('190-', done));
 
-        beforeEach(done => {
-            fileSize = 10 * 1024 * 1024;
-            fn = `hashedFile.${fileSize}`;
-            eTag = '"7eb736897d426098850e617502ea953e-2"';
-
-            s3.createBucketAsync({ Bucket: bucket })
-            .then(() => s3.createMultipartUploadAsync({
-                Bucket: bucket,
-                Key: fn,
-            }))
-            .then(res => {
-                uploadId = res.UploadId;
-            })
-            .then(() => createHashedFile(done))
-            .catch(err => throwErr('Error in beforeEach', err));
-        });
-
-        afterEach(done => bucketUtil.empty(bucket)
-            .then(() => bucketUtil.deleteOne(bucket))
-            .then(() => exec('rm getRangeExec hashedFile.*', done))
-        );
-
-        it('should get a range from the first part of an object put by ' +
-            'multipart upload', done => rangeTest('0-9', done, true));
-
-        it('should get a range from the second part of an object put by ' +
-            'multipart upload', done =>
-            rangeTest('5242880-5242889', done, true));
-
-        it('should get a range that spans both parts of an object put by ' +
-            'multipart upload', done =>
-            rangeTest('5242875-5242884', done, true));
-
-        it('should get a range from the second part of an object put by ' +
-            'multipart upload and include the end even if the range requested' +
-            ' goes beyond the actual object end by multipart upload', done =>
-            rangeTest('10485750-10485790', done, true));
+        it('should get full object if range header is invalid', done =>
+            // Since range header is invalid full object should be returned
+            // and there should be no Content-Range header
+            rangeTest('-', done));
     });
 });
