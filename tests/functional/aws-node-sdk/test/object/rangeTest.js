@@ -10,11 +10,11 @@ const bucket = 'bucket-for-range-test';
 const key = 'key-for-range-test';
 let s3;
 
-// Calculate the total number of bytes for given range ends
+// Calculate the total number of bytes for range end values
 const getTotal = (begin, end) =>
     Number.parseInt(end, 10) - Number.parseInt(begin, 10) + 1;
 
-// Return range values for various range end points (e.g., '-10', '10-', '-')
+// Get the expected end values for various ranges (e.g., '-10', '10-', '-')
 const getOuterRange = (range, fileSize) => {
     const arr = range.split('-');
     if (arr[0] === '' && arr[1] !== '') {
@@ -31,7 +31,7 @@ const getOuterRange = (range, fileSize) => {
     };
 };
 
-// Compare the S3 response from getObject with the corresponding byte range file
+// Compare the S3 object from getObject with the corresponding hashed range file
 const checkRanges = (range, fileSize, cb) => {
     s3.getObjectAsync({
         Bucket: bucket,
@@ -85,7 +85,7 @@ const completeMPU = (range, fileSize, uploadId, cb) =>
     })
     .then(() => cb(err)));
 
-// Creates the hashed file of size n
+// Create a hashed file of size n
 const createHashedFile = (fileSize, cb) => {
     const name = `hashedFile.${fileSize}`;
     execFile('gcc', ['-o', 'getRangeExec', 'lib/utility/getRange.c'],
@@ -97,7 +97,7 @@ const createHashedFile = (fileSize, cb) => {
         });
 };
 
-// Use the hashedFile to create a new file comprised of the byte range
+// Use the hashed file to create a new file comprised of a byte range
 const createRangedFile = (range, fileSize, cb) => {
     const name = `hashedFile.${fileSize}`;
     const { begin, end } = getOuterRange(range, fileSize);
@@ -106,7 +106,7 @@ const createRangedFile = (range, fileSize, cb) => {
         `skip=${begin}`, `count=${total}`], err => cb(err, name));
 };
 
-// Create the file comprised of the byte range from the original hashed file
+// Create a file comprised of a byte range from the original hashed file
 const putRangeTest = (range, fileSize, cb) =>
     createRangedFile(range, fileSize, (err, name) =>
         // Add the original hashed file to the bucket for objectGet API
@@ -118,8 +118,8 @@ const putRangeTest = (range, fileSize, cb) =>
         .then(() => checkRanges(range, fileSize, cb))
         .catch(cb));
 
-// For a MPU range test we upload the hashedFile as a MPU. Create two 5MB parts
-// to be uploaded as a MPU, or abort if there is an error
+// Upload a hashed file as a MPU, then Create two 5MB parts to be uploaded as a
+// MPU, or abort it if there is an error
 const mpuRangeTest = (range, fileSize, uploadId, cb) =>
     createRangedFile(range, fileSize, (err, name) =>
         async.times(2, (n, next) => {
@@ -131,7 +131,7 @@ const mpuRangeTest = (range, fileSize, uploadId, cb) =>
                     return s3.uploadPartAsync({
                         Bucket: bucket,
                         Key: key,
-                        PartNumber: n + 1,
+                        PartNumber: n + 1, // An MPU part cannot be 0
                         UploadId: uploadId,
                         Body: fs.createReadStream(`${name}.mpuPart${n + 1}`),
                     })
@@ -154,11 +154,10 @@ describe('aws-node-sdk range test for large end position', () => {
     withV4(sigCfg => {
         const bucketUtil = new BucketUtility('default', sigCfg);
         s3 = bucketUtil.s3;
-        const fileSize = 2890;
 
         beforeEach(done => {
             s3.createBucketAsync({ Bucket: bucket })
-            .then(() => createHashedFile(fileSize, done))
+            .then(() => createHashedFile(2890, done))
             .catch(done);
         });
 
@@ -170,11 +169,11 @@ describe('aws-node-sdk range test for large end position', () => {
         );
 
         it('should get the final 90 bytes of a 2890 byte object for a byte ' +
-            'range of 2800-', done => putRangeTest('2800-', fileSize, done));
+            'range of 2800-', done => putRangeTest('2800-', 2890, done));
 
         it('should get the final 90 bytes of a 2890 byte object for a byte ' +
             'range of 2800-Number.MAX_SAFE_INTEGER', done =>
-            putRangeTest(`2800-${Number.MAX_SAFE_INTEGER}`, fileSize, done));
+            putRangeTest(`2800-${Number.MAX_SAFE_INTEGER}`, 2890, done));
     });
 });
 
@@ -182,11 +181,10 @@ describe('aws-node-sdk range test of regular object put (non-MPU)', () => {
     withV4(sigCfg => {
         const bucketUtil = new BucketUtility('default', sigCfg);
         s3 = bucketUtil.s3;
-        const fileSize = 200;
 
         beforeEach(done => {
             s3.createBucketAsync({ Bucket: bucket })
-            .then(() => createHashedFile(fileSize, done))
+            .then(() => createHashedFile(200, done))
             .catch(done);
         });
 
@@ -198,16 +196,16 @@ describe('aws-node-sdk range test of regular object put (non-MPU)', () => {
         );
 
         it('should get a range for an object put without MPU', done =>
-            putRangeTest('10-99', fileSize, done));
+            putRangeTest('10-99', 200, done));
 
         it('should get a range for an object using only an end offset in the ' +
-            'request', done => putRangeTest('-10', fileSize, done));
+            'request', done => putRangeTest('-10', 200, done));
 
         it('should get a range for an object using only a begin offset in the' +
-            'request', done => putRangeTest('190-', fileSize, done));
+            'request', done => putRangeTest('190-', 200, done));
 
         it('should get full object if range header is invalid', done =>
-            putRangeTest('-', fileSize, done));
+            putRangeTest('-', 200, done));
     });
 });
 
@@ -215,8 +213,8 @@ describe('aws-node-sdk range test for multipartUpload', () => {
     withV4(sigCfg => {
         const bucketUtil = new BucketUtility('default', sigCfg);
         s3 = bucketUtil.s3;
-        let uploadId;
         const fileSize = 10 * 1024 * 1024;
+        let uploadId;
 
         beforeEach(done =>
             s3.createBucketAsync({ Bucket: bucket })
