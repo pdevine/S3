@@ -32,7 +32,7 @@ const getOuterRange = (range, fileSize) => {
 };
 
 // Compare the S3 object from getObject with the corresponding hashed range file
-const checkRanges = (range, fileSize, cb) => {
+const checkRanges = (range, fileSize, cb) =>
     s3.getObjectAsync({
         Bucket: bucket,
         Key: key,
@@ -56,7 +56,6 @@ const checkRanges = (range, fileSize, cb) => {
         return cb();
     }))
     .catch(cb);
-};
 
 // Complete the MPU, or abort it if there is an error
 const completeMPU = (range, fileSize, uploadId, cb) =>
