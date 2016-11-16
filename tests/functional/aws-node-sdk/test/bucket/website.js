@@ -75,12 +75,23 @@ describe('PUT bucket website', () => {
             });
         });
 
-        it.only('should put a bucket website successfully', done => {
+        it('should put a bucket website successfully', done => {
             const config = new _makeWebsiteConfig('index.html');
             s3.putBucketWebsite({ Bucket: bucketName,
                 WebsiteConfiguration: config }, (err, res) => {
                 assert.strictEqual(err, null, `Found unexpected err ${err}`);
-                console.log(res);
+                done();
+            });
+        });
+
+        it('should return InvalidArgument if IndexDocument or ' +
+        'RedirectAllRequestsTo is not provided', done => {
+            const config = new _makeWebsiteConfig();
+            s3.putBucketWebsite({ Bucket: bucketName,
+                WebsiteConfiguration: config }, err => {
+                assert(err, 'Expected err but found one');
+                assert.strictEqual(err.code, 'InvalidArgument');
+                assert.strictEqual(err.statusCode, 400);
                 done();
             });
         });
