@@ -448,58 +448,6 @@ describe('aws-node-sdk test suite as registered user', function testSuite() {
         });
     });
 
-    const regularObjectRangeGetTests = [
-        { it: 'should get a range for an object put without MPU',
-            range: 'bytes=10-99',
-            contentLength: '90',
-            contentRange: 'bytes 10-99/200',
-            // Buffer.fill(value, offset, end)
-            expectedBuff: Buffer.allocUnsafe(90).fill(0, 0, 40).fill(1, 40),
-        },
-        { it: 'should get a range for an object using only an end ' +
-            'offset in the request',
-            range: 'bytes=-10',
-            contentLength: '10',
-            contentRange: 'bytes 190-199/200',
-            expectedBuff: Buffer.alloc(10, 1),
-        },
-        { it: 'should get a range for an object using only a start offset ' +
-            'in the request',
-            range: 'bytes=190-',
-            contentLength: '10',
-            contentRange: 'bytes 190-199/200',
-            expectedBuff: Buffer.alloc(10, 1),
-        },
-        { it: 'should get full object if range header is invalid',
-            range: 'bytes=-',
-            contentLength: '200',
-            // Since range header is invalid full object should be returned
-            // and there should be no Content-Range header
-            contentRange: undefined,
-            expectedBuff: Buffer.allocUnsafe(200).fill(0, 0, 50).fill(1, 50),
-        },
-    ];
-
-    regularObjectRangeGetTests.forEach(test => {
-        it(test.it, done => {
-            const params = {
-                Bucket: bucket,
-                Key: 'normalput',
-                Range: test.range,
-            };
-            s3.getObject(params, (err, data) => {
-                if (err) {
-                    return done(new Error(
-                        `error getting object range: ${err}`));
-                }
-                assert.strictEqual(data.ContentLength, test.contentLength);
-                assert.strictEqual(data.ContentRange, test.contentRange);
-                assert.deepStrictEqual(data.Body, test.expectedBuff);
-                return done();
-            });
-        });
-    });
-
     it('should delete an object put without MPU',
         // deleteObject test
         done => {
