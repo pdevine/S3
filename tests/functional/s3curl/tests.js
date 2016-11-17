@@ -370,6 +370,28 @@ describe('s3curl put and get bucket ACLs', () => {
     });
 });
 
+//describe('s3curl put bucket website', () => {
+//    beforeEach(done => {
+//        provideRawOutput(
+//            ['--createBucket', '--', bucketPath, '-v'],
+//            httpCode => {
+//                assert.strictEqual(httpCode, '200 OK');
+//                done();
+//            });
+//    });
+
+//    afterEach(done => {
+//        provideRawOutput(
+//            ['--delete', '--', bucketPath, '-v'],
+//            httpCode => {
+//                assert.strictEqual(httpCode, '200 OK');
+//                done();
+//            });
+//    });
+
+//    it('should')
+//});
+
 describe('s3curl getService', () => {
     before(done => {
         provideRawOutput(
