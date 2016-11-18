@@ -21,7 +21,7 @@ response with HTTP code
 
 ## Stats
 
-The healthcheck route's successful response(200 OK) is appended with
+The healthcheck route's successful response (200 OK) is appended with
 additional statistics in the request body indicating the number of requests
 performed, number of 500 errors occurred over the time interval
 specified in the response.
@@ -38,8 +38,8 @@ A sample response would look something like
 
 ## Redis schema
 
-The goal return stats for the set interval, i.e., if interval is 30 seconds,
-return stats only for the last 30 seconds.
+The goal is to return stats for the set interval, i.e., if interval is 30
+seconds, return stats only for the last 30 seconds.
 
 The stats use simple keys with INCR command for every new push. Each key is
 appended with a normalized unix timestamp, as the idea is to store the stats in
@@ -47,9 +47,10 @@ appended with a normalized unix timestamp, as the idea is to store the stats in
 seconds is associated with each key, this way any keys older than the TTL are
 automatically removed.
 
-When a stats query is received, all these keys with 5 second interval need to
-be queried to get the sum of requests, 500s etc. As Redis does not have a
-performant RANGE query, the list of keys are built manually as follows
+When a stats query is received, the results for the prior 30 seconds will be
+returned. This is accomplished by retrieving the 6 keys that represent the 6
+five-second intervals. As Redis does not have a performant RANGE query, the
+list of keys are built manually as follows
 
 * Take current timestamp
 
